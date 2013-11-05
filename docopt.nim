@@ -53,14 +53,15 @@ proc partition(s: string, sep: char): tuple[pre: string, sep: string, post: stri
   else:
     result = (s, "", "")
 
-iterator walk[T](s: seq[T], stride: int, start=0): T =
+iterator walk[T](s: seq[T], stride=1, start=0): T =
   ## walk through a sequence with given stride
+  assert(stride > 0) # cannot be neg or 0 otherwise inf loop
   var i = start
   while i < len(s):
     yield s[i]
     i += stride
 
-proc walk[T](s: seq[T], stride: int, start=0): seq[T] =
+proc walk[T](s: seq[T], stride=1, start=0): seq[T] =
   accumulateResult(walk(s, stride, start))
 
 #proc parse(opt: 
@@ -82,7 +83,7 @@ proc parse_defaults(doc: string): seq[string] =
 
     let splitStr = split("\n" & post, re"\n[ \t]*(-\S+?)")
     var elems: seq[string] = @[]
-    for stup in zip(walk(splitStr, 1), walk(splitStr, 1, 1)):
+    for stup in zip(walk(splitStr), walk(splitStr, start=1)):
       elems = elems & (stup[0] & stup[1])
 
 
