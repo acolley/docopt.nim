@@ -1,9 +1,9 @@
 import os
-import parseutils
 import re
-import sequtils
 import strutils
 import tables
+
+from sequtils import zip
 
 type
   EDocoptLanguageError = object of E_Base
