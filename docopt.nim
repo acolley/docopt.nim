@@ -1,5 +1,5 @@
 import os
-import re except match
+import re
 import sequtils
 import strutils
 import tables
@@ -85,9 +85,15 @@ proc parseOption(optdesc: string): TOption =
       argcount = 1
 
   if argcount > 0:
-    let matched = findAll(desc, re(r"\[default: (.*)\]", {reIgnoreCase}))
-    if len(matched) > 0:
-      value = matched[0]
+    # FIXME: regex does not work using findAll, it does
+    # not return all captured substrings, just the whole regex match
+    let matches = findAll(desc, re(r"\[default: (.*)\]", {reIgnoreCase}))
+    if len(matches) > 0:
+      value = matches[0]
+    #if desc =~ re(r"\[default: (.*)\]", {reIgnoreCase}):
+    #  value = matches[0]
+
+  echo(short & " " & long & " " & $argcount & " " & value)
   
   result = TOption(short: short, long: long, argcount: argcount, value: value)
 
