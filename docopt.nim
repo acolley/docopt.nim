@@ -51,11 +51,6 @@ type
 method `$`(patt: TPattern): string =
   result = "TPattern"
 
-#method fix(patt: ref TBranchPattern): ref TPattern =
-# fix identities
-
-# fix repeating arguments
-
 # END TPattern implementation
 
 # TLeafPattern implementation
@@ -64,6 +59,15 @@ method name(patt: TLeafPattern): string =
 
 method `$`(patt: TLeafPattern): string =
   result = patt.name
+
+method match(patt: TLeafPattern, left: seq[TPattern], coll: seq[TPattern]=nil):
+  tuple[success: bool, l, c: seq[TPattern]] =
+  var collected = coll
+  if collected == nil:
+    collected = @[]
+
+  let (pos, mtch) = single_match(patt, left)
+
 # END TLeafPattern implementation
 
 # TOption implementation
@@ -85,15 +89,12 @@ proc parseOption(optdesc: string): TOption =
       argcount = 1
 
   if argcount > 0:
-    # FIXME: regex does not work using findAll, it does
-    # not return all captured substrings, just the whole regex match
-    let matches = findAll(desc, re(r"\[default: (.*)\]", {reIgnoreCase}))
-    if len(matches) > 0:
-      value = matches[0]
-    #if desc =~ re(r"\[default: (.*)\]", {reIgnoreCase}):
-    #  value = matches[0]
-
-  echo(short & " " & long & " " & $argcount & " " & value)
+    var matched = findAll(desc, re(r"\[default: (.*)\]", {reIgnoreCase}))
+    if len(matched) > 0:
+      # bad hack! because findAll does not return sub matches
+      # we have to match against the first returned match
+      if matched[0] =~ re(r"\[default: (.*)\]", {reIgnoreCase}):
+        value = matches[0]
   
   result = TOption(short: short, long: long, argcount: argcount, value: value)
 
@@ -106,6 +107,16 @@ method name(opt: TOption): string =
     result = opt.short
 
 # END TOption implementation
+
+# TBranchPattern implementation
+
+#method fixIdentities(patt: TBranchPattern, uniq: seq[TPattern]) =
+
+#method fixRepeatingArguments(patt: TBranchPattern): TBranchPattern =
+
+#method fix()
+
+# END TBranchPattern implementation
 
 iterator walk[T](s: seq[T], stride=1, start=0): T =
   ## walk through a sequence with given stride
@@ -133,7 +144,7 @@ proc parseSection(name: string, source: string): seq[string] =
 proc parseDefaults(doc: string): seq[TOption] =
   result = @[]
   for s in parse_section("options:", doc):
-    # FIXME corner case "bla: options: --foo
+    # FIXME: corner case "bla: options: --foo
     let post = partition(s, ':')[2] # get rid of "options:"
     
     # docopt.py regex is "\n[ \t]*(-\S+?)" the reason for the
@@ -142,9 +153,6 @@ proc parseDefaults(doc: string): seq[TOption] =
     # TODO: maybe a useful addition to re.nim?
     var splitStr = split("\n" & post, re(r"\n[ \t]*(?=-\S+?)", {}))
     splitStr = splitStr[1..len(splitStr)-1]
-    #var elems: seq[string] = @[]
-    #for stup in zip(walk(splitStr, stride=2), walk(splitStr, stride=2, start=1)):
-    #  elems = elems & (stup[0] & stup[1])
 
     result = result & map(filter(splitStr, proc(s: string): bool = s.startswith("-")), parseOption)
 
@@ -170,4 +178,6 @@ proc docopt*(doc: string, argv: seq[string]=nil, help=true, version="", optionsF
   # TODO: DocoptExit.usage = usage_sections[0]
 
   let options = parseDefaults(doc)
+  for opt in options:
+    echo($opt.long)
   #let pattern = parse_pattern(formal_usage(usage_sections[0]), options)
