@@ -336,24 +336,86 @@ iterator walk[T](s: seq[T], stride=1, start=0): T =
 proc walk[T](s: seq[T], stride=1, start=0): seq[T] =
   accumulateResult(walk(s, stride, start))
 
-proc parseLong(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
-  result = @[]
+proc parseLong(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
+  ## long ::= "--" chars [ ( " " | "=" ) chars ] ;
+  # TODO: finish
+  var (long, eq, value) = move(tokens).partition("=")
+  assert(long.startswith("--"))
+  var similar = filter(options) do (opt: TOption) -> bool:
+    opt.long == long
+  var opt: TOption = nil
+  # TODO: support DocoptExit error here
+  if len(similar) > 1: # might be simply specified ambiguously 2+ times?
+    var longs = map(similar) do (opt: TOption) -> string: opt.long
+    raise newException(EDocoptLanguageError, long & " is not a unique prefix: " &
+                                             join(longs, ", ") & "?")
+  elif len(similar) < 1:
+    var argcount = 0
+    if eq == "=":
+      argcount = 1
+    opt = TOption(short: "", long: long, argcount: argcount, value: "")
+    options = options & opt
+    # TODO: support DocoptExit error here
+  else:
+    opt = TOption(short: similar[0].short, long: similar[0].long,
+                  argcount: similar[0].argcount, value: similar[0].value)
+    if opt.argcount == 0:
+      if value != "":
+        raise newException(EDocoptLanguageError, opt.long & " must not have an argument")
+    else:
+      if value == "":
+        if current(tokens) in @["", "--"]:
+          raise newException(EDocoptLanguageError, opt.long & " requires argument")
+        value = move(tokens)
+    # TODO: support DocoptExit error here
 
-proc parseShorts(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
+  if opt != nil:
+    result = @[TPattern(opt)]
+  else:
+    result = @[]
+
+proc parseShorts(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
+  # TODO: finish
   var token = move(tokens)
   assert(token.startswith("-") and not token.startswith("--"))
   var left = token.lstrip('-')
   result = @[]
+  var opt: TOption = nil
   while left != "":
-    var 
+    var
       short = "-" & $left[0]
       left = left[1..len(left)-1]
-      similar = filter(options) do (opt: TOption) ->
+      similar = filter(options) do (opt: TOption) -> bool:
         opt.short == short
+    if len(similar) > 1:
+      raise newException(EDocoptLanguageError, short & " is specified ambiguously " &
+                                               $len(similar) & " times")
+    elif len(similar) < 1:
+      opt = TOption(short: short, long: "", argcount: 0, value: "")
+      options = options & opt
+      # TODO: if the error is DocoptExit
+      # we need to support this
+    else: # why is copying necessary here?
+      opt = TOption(short: short, long: similar[0].long,
+                        argcount: similar[0].argcount, value: similar[0].value)
+      var value = ""
+      if opt.argcount != 0:
+        if left == "":
+          if current(tokens) in @["", "--"]:
+            raise newException(EDocoptLanguageError, short & " requires argument")
+          value = move(tokens)
+        else:
+          value = left
+          left = ""
+      # TODO: support the error being DocoptExit here
+
+    if opt != nil:
+      result = result & opt
+      opt = nil
 
 # forward declaration for parseAtom
-proc parseExpr(tokens: var TTokens, options: seq[TOption]): seq[TPattern]
-proc parseAtom(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
+proc parseExpr(tokens: var TTokens, options: var seq[TOption]): seq[TPattern]
+proc parseAtom(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
   ## atom ::= "(" expr ")" | "[" expr "]" | "options"
   ##       | long | shorts | argument | command ;
   # TODO: finish
@@ -381,7 +443,7 @@ proc parseAtom(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
   else:
     result = @[TPattern(TCommand(name: move(tokens), value: ""))]
 
-proc parseSeq(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
+proc parseSeq(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
   ## seq ::= ( atom [ "..." ] )* ;
   # TODO: finish
   result = @[]
@@ -392,7 +454,7 @@ proc parseSeq(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
       discard move(tokens)
     result = result & atom
 
-proc parseExpr(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
+proc parseExpr(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
   ## expr ::= seq ( "|" seq )* ;
   # TODO: finish
   var sequence = parseSeq(tokens, options)
@@ -415,7 +477,7 @@ proc parseExpr(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
   if len(result) > 1:
     result = @[TPattern(TEither(children: sequence))]
 
-proc parsePattern(source: string, options: seq[TOption]): TPattern =
+proc parsePattern(source: string, options: var seq[TOption]): TPattern =
   # parse from pattern into tokens
   var src = source.replacef(re(r"([\[\]\(\)\|]|\.\.\.)", {}), " $1")
   var tokens = src.split(re(r"\s+|(\S*<.*?>)", {reDotAll}))
@@ -425,7 +487,7 @@ proc parsePattern(source: string, options: seq[TOption]): TPattern =
     raise newException(EDocoptLanguageError, "unexpected ending: " & join(tokens, " "))
   result = TRequired(children: res)
 
-proc parseArgv(tokens: var seq[string], options: seq[TOption], optionsFirst=false): seq[TPattern] =
+proc parseArgv(tokens: var seq[string], options: var seq[TOption], optionsFirst=false): seq[TPattern] =
   # TODO: finish
   result = @[]
 
@@ -477,5 +539,5 @@ proc docopt*(doc: string, argv: seq[string]=nil, help=true, version="", optionsF
     raise newException(EDocoptLanguageError, "More than one \"usage:\" (case-insensitive).")
   # TODO: DocoptExit.usage = usage_sections[0]
 
-  let options = parseDefaults(doc)
+  var options = parseDefaults(doc)
   let pattern = parsePattern(formalUsage(usageSections[0]), options)
