@@ -4,6 +4,10 @@ import sequtils
 import strutils
 import tables
 
+# TODO: look at typetraits module for checking types
+# at runtime, can use the 'name' proc to get a string
+# of the type's name and then check this against others
+
 type
   EDocoptLanguageError = object of E_Base
 
@@ -108,7 +112,7 @@ method `$`(patt: TLeafPattern): string =
 
 # FIXME: can't take array of 'type' this crashes the compiler
 # and is not supported anyway
-#method flat(patt: TLeafPattern, types: openarray[type]): seq[TPattern] =
+#method flat(patt: TLeafPattern, types: openarray[string]): seq[TPattern] =
 #  if len(types) == 0 or type(patt) in types:
 #    result = @[patt]
 #  else:
