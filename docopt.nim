@@ -45,13 +45,46 @@ type
   TOneOrMore = ref object of TBranchPattern
 
   TEither = ref object of TBranchPattern
+
+  TTokens = seq[string]
   
+# TODO: add these to std lib?
+proc isUpper(s: string): bool =
+  result = s == s.toUpper()
+
+proc lstrip(s: string, c=' '): string =
+  var i = 0
+  while s[i] == c:
+    inc(i)
+  result = substr(s, i, len(s)-1)
+
+proc lstrip(s: string, cs: set[char]): string =
+  var i = 0
+  while s[i] in cs:
+    inc(i)
+  result = substr(s, i, len(s)-1)
+
+proc rstrip(s: string, c=' '): string =
+  var i = len(s)-1
+  while s[i] == c:
+    dec(i)
+  result = substr(s, 0, i)
+
+proc rstrip(s: string, cs: set[char]): string =
+  var i = len(s)-1
+  while s[i] in cs:
+    dec(i)
+  result = substr(s, 0, i)
+
 # TPattern implementation
 
 method `$`(patt: TPattern): string =
   result = "TPattern"
 
 method name(patt: TPattern): string =
+  result = ""
+
+method value(patt: TPattern): string =
   result = ""
 
 #method flat(patt: TPattern, types: openarray[type]): seq[TPattern] =
@@ -66,6 +99,9 @@ method match(patt: TPattern, left: seq[TPattern], coll: seq[TPattern]=nil):
 # TLeafPattern implementation
 method name(patt: TLeafPattern): string =
   result = patt.name
+
+method value(patt: TLeafPattern): string =
+  result = patt.value
 
 method `$`(patt: TLeafPattern): string =
   result = patt.name
@@ -88,6 +124,45 @@ method `$`(patt: TLeafPattern): string =
 #  let (pos, mtch) = patt.single_match(left)
 
 # END TLeafPattern implementation
+
+# TArgument implementation
+
+proc parseArgument(source: string): TArgument =
+  var name = findAll(source, re(r"<\S*?>", {}))[0]
+  var m = findAll(source, re(r"\[default: (.*)\]", {reIgnoreCase}))
+  if m[0] =~ re(r"\[default: (.*)\]", {}):
+    result = TArgument(name: name, value: matches[0])
+  else:
+    result = TArgument(name: name, value: "")
+
+method singleMatch(patt: TArgument, left: seq[TPattern]): 
+  tuple[pos: int, patt: TPattern] =
+  var i = 0
+  for pattern in left:
+    if type(pattern) is TArgument:
+      return (i, TArgument(name: patt.name, value: pattern.value))
+  return (-1, nil)
+
+# END TArgument implementation
+
+# TCommand implementation
+
+# TODO: a command is a flag so the value
+# should be a bool, find a way to represent
+# this in this statically typed language
+
+method singleMatch(patt: TCommand, left: seq[TPattern]):
+  tuple[pos: int, patt: TPattern] =
+  var i = 0
+  for pattern in left:
+    if type(pattern) is TArgument:
+      if pattern.value == patt.name:
+        return (i, TCommand(name: patt.name, value: "true"))
+      else:
+        break
+  return (-1, nil)
+
+# END TCommand
 
 # TOption implementation
 proc parseOption(optdesc: string): TOption =
@@ -127,6 +202,9 @@ method singleMatch(patt: TOption, left: seq[TPattern]):
   tuple[pos: int, patt: TPattern] =
   var i = 0
   for pattern in left:
+    # FIXME: for some reason we can't use call style patt.name()
+    # as the compiler complains about needing an identifier
+    # so must use name(patt) style
     if pattern.name() == name(patt):
       return (i, pattern)
     inc(i)
@@ -204,6 +282,22 @@ method match(patt: TOneOrMore, left: seq[TPattern], coll: seq[TPattern]=nil):
 
 # END TOneOrMore implementation
 
+# TTokens implementation
+proc current(tokens: TTokens): string =
+  if len(tokens) > 0:
+    result = tokens[0]
+  else:
+    result = ""
+
+proc move(tokens: var TTokens): string =
+  if len(tokens) > 0:
+    result = tokens[0]
+    tokens.del(0)
+  else:
+    result = ""
+
+# END TTokens implementation
+
 iterator walk[T](s: seq[T], stride=1, start=0): T =
   ## walk through a sequence with given stride
   assert(stride > 0) # cannot be neg or 0 otherwise inf loop
@@ -215,33 +309,94 @@ iterator walk[T](s: seq[T], stride=1, start=0): T =
 proc walk[T](s: seq[T], stride=1, start=0): seq[T] =
   accumulateResult(walk(s, stride, start))
 
-proc parseLong(tokens: var seq[string], options: seq[TOption]): seq[TPattern] =
+proc parseLong(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
   result = @[]
 
-proc parseShorts(tokens: var seq[string], options: seq[TOption]): seq[TPattern] =
+proc parseShorts(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
+  var token = move(tokens)
+  assert(token.startswith("-") and not token.startswith("--"))
+  var left = token.lstrip('-')
   result = @[]
+  while left != "":
+    var 
+      short = "-" & $left[0]
+      left = left[1..len(left)-1]
+      similar = filter(options) do (opt: TOption) ->
+        opt.short == short
 
-proc parseAtom(tokens: var seq[string], options: seq[TOption]): seq[TPattern] =
+# forward declaration for parseAtom
+proc parseExpr(tokens: var TTokens, options: seq[TOption]): seq[TPattern]
+proc parseAtom(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
+  ## atom ::= "(" expr ")" | "[" expr "]" | "options"
+  ##       | long | shorts | argument | command ;
+  # TODO: finish
+  var token = current(tokens)
+  if token in @["(", "["]:
+    discard move(tokens)
+    var matching = ""
+    if token == "(":
+      result = @[TPattern(TRequired(children: parseExpr(tokens, options)))]
+      matching = ")"
+    else:
+      result = @[TPattern(TOptional(children: parseExpr(tokens, options)))]
+      matching = "]"
+    if move(tokens) != matching:
+      raise newException(EDocoptLanguageError, "unmatched '" & token & "'")
+  elif token == "options":
+    discard move(tokens)
+    result = @[TPattern(TOptionsShortcut())]
+  elif token.startswith("--") and token != "--":
+    result = parseLong(tokens, options)
+  elif token.startswith("-") and token notin @["-", "--"]:
+    result = parseShorts(tokens, options)
+  elif token.startswith("<") and token.endswith(">") or token.isUpper():
+    result = @[TPattern(TArgument(name: move(tokens), value: ""))]
+  else:
+    result = @[TPattern(TCommand(name: move(tokens), value: ""))]
+
+proc parseSeq(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
+  ## seq ::= ( atom [ "..." ] )* ;
   # TODO: finish
   result = @[]
+  while current(tokens) notin @["", "]", ")", "|"]:
+    var atom = parseAtom(tokens, options)
+    if current(tokens) == "...":
+      atom = @[TPattern(TOneOrMore(children: atom))]
+      discard move(tokens)
+    result = result & atom
 
-proc parseSeq(tokens: var seq[string], options: seq[TOption]): seq[TPattern] =
+proc parseExpr(tokens: var TTokens, options: seq[TOption]): seq[TPattern] =
+  ## expr ::= seq ( "|" seq )* ;
   # TODO: finish
-  result = @[]
+  var sequence = parseSeq(tokens, options)
+  echo(current(tokens))
+  if current(tokens) != "|":
+    return sequence
+  
+  if len(sequence) > 1:
+    result = @[TPattern(TRequired(children: sequence))]
+  else:
+    result = sequence
 
-proc parseExpr(tokens: var seq[string], options: seq[TOption]): seq[TPattern] =
-  # TODO: finish
-  result = @[]
+  while current(tokens) == "|":
+    discard move(tokens)
+    sequence = parseSeq(tokens, options)
+    if len(sequence) > 1:
+      result = result & TRequired(children: sequence)
+    else:
+      result = result & sequence
+  if len(result) > 1:
+    result = @[TPattern(TEither(children: sequence))]
 
 proc parsePattern(source: string, options: seq[TOption]): TPattern =
-  # TODO: finish
   # parse from pattern into tokens
   var src = source.replacef(re(r"([\[\]\(\)\|]|\.\.\.)", {}), " $1")
   var tokens = src.split(re(r"\s+|(\S*<.*?>)", {reDotAll}))
 
   let res = parseExpr(tokens, options)
-  if len(res) > 0:
+  if current(tokens) != "":
     raise newException(EDocoptLanguageError, "unexpected ending: " & join(tokens, " "))
+  result = TRequired(children: res)
 
 proc parseArgv(tokens: var seq[string], options: seq[TOption], optionsFirst=false): seq[TPattern] =
   # TODO: finish
@@ -296,4 +451,4 @@ proc docopt*(doc: string, argv: seq[string]=nil, help=true, version="", optionsF
   # TODO: DocoptExit.usage = usage_sections[0]
 
   let options = parseDefaults(doc)
-  #let pattern = parsePattern(formalUsage(usageSections[0]), options)
+  let pattern = parsePattern(formalUsage(usageSections[0]), options)
