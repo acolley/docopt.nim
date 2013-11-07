@@ -140,7 +140,7 @@ method singleMatch(patt: TArgument, left: seq[TPattern]):
   var i = 0
   for pattern in left:
     if type(pattern) is TArgument:
-      return (i, TArgument(name: patt.name, value: pattern.value))
+      return (i, TPattern(TArgument(name: patt.name, value: pattern.value)))
   return (-1, nil)
 
 # END TArgument implementation
@@ -157,7 +157,7 @@ method singleMatch(patt: TCommand, left: seq[TPattern]):
   for pattern in left:
     if type(pattern) is TArgument:
       if pattern.value == patt.name:
-        return (i, TCommand(name: patt.name, value: "true"))
+        return (i, TPattern(TCommand(name: patt.name, value: "true")))
       else:
         break
   return (-1, nil)
@@ -281,6 +281,33 @@ method match(patt: TOneOrMore, left: seq[TPattern], coll: seq[TPattern]=nil):
   result = (true, @[], @[])
 
 # END TOneOrMore implementation
+
+# TEither implementation
+
+method match(patt: TEither, left: seq[TPattern], coll: seq[TPattern]=nil):
+  tuple[success: bool, l, c: seq[TPattern]] =
+  var collected = coll
+  if collected == nil:
+    collected = @[]
+
+  var outcomes: seq[tuple[success: bool, l, c: seq[TPattern]]] = @[]
+  for pattern in patt.children:
+    var outcome = pattern.match(left, collected)
+    if outcome[0]:
+      outcomes = outcomes & outcome
+
+  if len(outcomes) > 0:
+    # return smallest matching outcome pattern
+    # i.e. the one with the fewest left patterns
+    result = outcomes[0]
+    var i = 1
+    while i < len(outcomes):
+      if len(outcomes[i][1]) < len(result[1]):
+        result = outcomes[i]
+  else:
+    result = (false, left, collected)
+
+# END TEither
 
 # TTokens implementation
 proc current(tokens: TTokens): string =
