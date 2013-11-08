@@ -82,7 +82,7 @@ proc rstrip(s: string, cs: set[char]): string =
 # TPattern implementation
 
 method `$`(patt: TPattern): string =
-  result = "TPattern"
+  result = "TPattern: "
 
 method name(patt: TPattern): string =
   result = ""
@@ -105,9 +105,6 @@ method name(patt: TLeafPattern): string =
 
 method value(patt: TLeafPattern): string =
   result = patt.value
-
-method `$`(patt: TLeafPattern): string =
-  result = patt.name
 
 method flat(patt: TLeafPattern, types: openarray[string]): seq[TPattern] =
   if len(types) == 0 or name(type(patt)) in types:
@@ -348,6 +345,13 @@ proc move(tokens: var TTokens): string =
 
 # END TTokens implementation
 
+proc removeDupes(xs: seq[TPattern]): seq[TPattern] =
+  result = @[]
+  for x in xs:
+    let dupes = filter(result) do (p: TPattern) -> bool: $p == $x
+    if len(dupes) == 0:
+      result = result & x
+
 iterator walk[T](s: seq[T], stride=1, start=0): T =
   ## walk through a sequence with given stride
   assert(stride > 0) # cannot be neg or 0 otherwise inf loop
@@ -361,7 +365,6 @@ proc walk[T](s: seq[T], stride=1, start=0): seq[T] =
 
 proc parseLong(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
   ## long ::= "--" chars [ ( " " | "=" ) chars ] ;
-  # TODO: finish
   var 
     part = move(tokens).partition("=")
     long = part[0]
@@ -402,7 +405,6 @@ proc parseLong(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
     result = @[]
 
 proc parseShorts(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
-  # TODO: finish
   var token = move(tokens)
   assert(token.startswith("-") and not token.startswith("--"))
   var left = token.lstrip('-')
@@ -444,7 +446,6 @@ proc parseExpr(tokens: var TTokens, options: var seq[TOption]): seq[TPattern]
 proc parseAtom(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
   ## atom ::= "(" expr ")" | "[" expr "]" | "options"
   ##       | long | shorts | argument | command ;
-  # TODO: finish
   var token = current(tokens)
   if token in @["(", "["]:
     discard move(tokens)
@@ -471,7 +472,6 @@ proc parseAtom(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
 
 proc parseSeq(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
   ## seq ::= ( atom [ "..." ] )* ;
-  # TODO: finish
   result = @[]
   while current(tokens) notin @["", "]", ")", "|"]:
     var atom = parseAtom(tokens, options)
@@ -482,7 +482,6 @@ proc parseSeq(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
 
 proc parseExpr(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
   ## expr ::= seq ( "|" seq )* ;
-  # TODO: finish
   var sequence = parseSeq(tokens, options)
   if current(tokens) != "|":
     return sequence
@@ -516,8 +515,24 @@ proc parsePattern(source: string, options: var seq[TOption]): TPattern =
   result = TRequired(children: res)
 
 proc parseArgv(tokens: var seq[string], options: var seq[TOption], optionsFirst=false): seq[TPattern] =
-  # TODO: finish
+  ## Parse command-line argument vector.
+  ##
+  ## If optionsFirst:
+  ##   argv ::= [ long | shorts ]* [ argument ]* [ "--" [ argument ]* ] ;
+  ## else:
+  ##   argv ::= [ long | shorts | argument ]* [ "--" [ argument ] * ] ;
   result = @[]
+  while current(tokens) != "":
+    if current(tokens) == "--":
+      return result & map(tokens) do (v: string) -> TPattern: TPattern(TArgument(name: "", value: v))
+    elif current(tokens).startswith("--"):
+      result = result & parseLong(tokens, options)
+    elif current(tokens).startswith("-") and current(tokens) != "-":
+      result = result & parseShorts(tokens, options)
+    elif optionsFirst:
+      return result & map(tokens) do (v: string) -> TPattern: TPattern(TArgument(name: "", value: v))
+    else:
+      result = result & TPattern(TArgument(name: "", value: move(tokens)))
 
 proc parseSection(name: string, source: string): seq[string] =
   result = @[]
@@ -569,3 +584,10 @@ proc docopt*(doc: string, argv: seq[string]=nil, help=true, version="", optionsF
 
   var options = parseDefaults(doc)
   let pattern = parsePattern(formalUsage(usageSections[0]), options)
+  let argv = parseArgv(args, options, optionsFirst)
+  # TODO: turn this into a set of TOptions
+  let patternOptions = removeDupes(pattern.flat(@["TOption"]))
+  var optionShortcuts = pattern.flat(@["TOptionsShortcut"])
+  # mutate optionShortcuts' children
+  #map(optionShortcuts) do (ops: TPattern) -> TPattern:
+  #  TOptionsShortcut(ops).children = 
