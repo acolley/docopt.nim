@@ -274,11 +274,32 @@ method match(patt: TOptional, left: seq[TPattern], coll: seq[TPattern]=nil):
 
 method match(patt: TOneOrMore, left: seq[TPattern], coll: seq[TPattern]=nil):
   tuple[success: bool, l, c: seq[TPattern]] =
-  # TODO: finish
   assert(len(patt.children) == 1)
-
-  result = (true, @[], @[])
-
+  var collected = coll
+  if collected == nil:
+    collected = @[]
+  var
+    l = left
+    c = collected
+    ltemp: seq[TPattern] = nil
+    matched = true
+    times = 0
+  while matched:
+    # could it be that something didn't match but changed l or c?
+    var res = patt.children[0].match(l, c)
+    matched = res[0]
+    l = res[1]
+    c = res[2]
+    if matched:
+      inc(times)
+    if ltemp == l:
+      break
+    ltemp = l
+  if times >= 1:
+    result = (true, l, c)
+  else:
+    result = (false, left, collected)
+    
 # END TOneOrMore implementation
 
 # TEither implementation
