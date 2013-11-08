@@ -5,6 +5,8 @@ import strutils
 import tables
 import typetraits
 
+{.warning[SmallLshouldNotBeUsed]: off.}
+
 type
   EDocoptLanguageError = object of E_Base
 
@@ -342,6 +344,7 @@ proc move(tokens: var TTokens): string =
     system.delete(tokens, 0)
   else:
     result = ""
+  echo(result)
 
 # END TTokens implementation
 
@@ -359,7 +362,11 @@ proc walk[T](s: seq[T], stride=1, start=0): seq[T] =
 proc parseLong(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
   ## long ::= "--" chars [ ( " " | "=" ) chars ] ;
   # TODO: finish
-  var (long, eq, value) = move(tokens).partition("=")
+  var 
+    part = move(tokens).partition("=")
+    long = part[0]
+    eq = part[1]
+    value = part[2]
   assert(long.startswith("--"))
   var similar = filter(options) do (opt: TOption) -> bool:
     opt.long == long
@@ -404,9 +411,8 @@ proc parseShorts(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] 
   while left != "":
     var
       short = "-" & $left[0]
-      left = left[1..len(left)-1]
-      similar = filter(options) do (opt: TOption) -> bool:
-        opt.short == short
+      similar = filter(options) do (opt: TOption) -> bool: opt.short == short
+    left = left[1..len(left)-1]
     if len(similar) > 1:
       raise newException(EDocoptLanguageError, short & " is specified ambiguously " &
                                                $len(similar) & " times")
@@ -498,8 +504,11 @@ proc parseExpr(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
 
 proc parsePattern(source: string, options: var seq[TOption]): TPattern =
   # parse from pattern into tokens
-  var src = source.replacef(re(r"([\[\]\(\)\|]|\.\.\.)", {}), " $1")
-  var tokens = src.split(re(r"\s+|(\S*<.*?>)", {reDotAll}))
+  var src = source.replacef(re(r"([\[\]\(\)\|]|\.\.\.)", {}), " $1 ") # space delimit tokens
+  # FIXME: may not be correct as original regex here is r"\s+|(\S*<.*?>)" but because
+  # Nimrod's split regex does not return captures in the split regex we have to use
+  # this more naive method (could cause problems in future)
+  var tokens = src.split(re(r"\s+", {reDotAll}))
 
   let res = parseExpr(tokens, options)
   if current(tokens) != "":
