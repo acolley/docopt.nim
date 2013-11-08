@@ -339,7 +339,7 @@ proc current(tokens: TTokens): string =
 proc move(tokens: var TTokens): string =
   if len(tokens) > 0:
     result = tokens[0]
-    tokens.del(0)
+    system.delete(tokens, 0)
   else:
     result = ""
 
@@ -478,7 +478,6 @@ proc parseExpr(tokens: var TTokens, options: var seq[TOption]): seq[TPattern] =
   ## expr ::= seq ( "|" seq )* ;
   # TODO: finish
   var sequence = parseSeq(tokens, options)
-  echo(current(tokens))
   if current(tokens) != "|":
     return sequence
   
