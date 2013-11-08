@@ -3,10 +3,7 @@ import re
 import sequtils
 import strutils
 import tables
-
-# TODO: look at typetraits module for checking types
-# at runtime, can use the 'name' proc to get a string
-# of the type's name and then check this against others
+import typetraits
 
 type
   EDocoptLanguageError = object of E_Base
@@ -91,8 +88,8 @@ method name(patt: TPattern): string =
 method value(patt: TPattern): string =
   result = ""
 
-#method flat(patt: TPattern, types: openarray[type]): seq[TPattern] =
-#  result = @[]
+method flat(patt: TPattern, types: openarray[string]): seq[TPattern] =
+  result = @[]
 
 method match(patt: TPattern, left: seq[TPattern], coll: seq[TPattern]=nil):
   tuple[success: bool, l, c: seq[TPattern]] =
@@ -110,13 +107,11 @@ method value(patt: TLeafPattern): string =
 method `$`(patt: TLeafPattern): string =
   result = patt.name
 
-# FIXME: can't take array of 'type' this crashes the compiler
-# and is not supported anyway
-#method flat(patt: TLeafPattern, types: openarray[string]): seq[TPattern] =
-#  if len(types) == 0 or type(patt) in types:
-#    result = @[patt]
-#  else:
-#    result = @[]
+method flat(patt: TLeafPattern, types: openarray[string]): seq[TPattern] =
+  if len(types) == 0 or name(type(patt)) in types:
+    result = @[TPattern(patt)]
+  else:
+    result = @[]
 
 #method match(patt: TLeafPattern, left: seq[TPattern], coll: seq[TPattern]=nil) =
 # TODO: finish
@@ -218,13 +213,13 @@ method singleMatch(patt: TOption, left: seq[TPattern]):
 
 # TBranchPattern implementation
 
-#method flat(patt: TBranchPattern, types: openarray[type]): seq[TPattern] =
-#  if type(patt) in types:
-#    result = @[patt]
-#  else:
-#    result = @[]
-#    for child in patt.children:
-#      result = result & child.flat(types)
+method flat(patt: TBranchPattern, types: openarray[string]): seq[TPattern] =
+  if name(type(patt)) in types:
+    result = @[TPattern(patt)]
+  else:
+    result = @[]
+    for child in patt.children:
+      result = result & child.flat(types)
 
 #method fixIdentities(patt: TBranchPattern, uniq: seq[TPattern]) =
 
