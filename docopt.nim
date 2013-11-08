@@ -71,8 +71,8 @@ proc rstrip(s: string, cs: set[char]): string =
 
 # TPattern implementation
 
-#proc match(patt: TPattern, left: seq[TPattern], coll: seq[TPattern]):
-#  tuple[success: bool, l, c: seq[TPattern]]
+proc match(patt: TPattern, left: seq[TPattern], coll: seq[TPattern]=nil):
+  tuple[success: bool, l, c: seq[TPattern]]
 
 proc matchRequired(patt: TPattern, left: seq[TPattern], coll: seq[TPattern]=nil):
   tuple[success: bool, l, c: seq[TPattern]] =
