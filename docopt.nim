@@ -220,13 +220,13 @@ proc matchLeafPattern(patt: TPattern, left: seq[TPattern], coll: seq[TPattern]=n
 proc `$`(patt: TPattern): string =
   case patt.kind
   of BranchPattern:
-    result = $patt.branchKind & ": (" & join(map(patt.children, proc(p: TPattern): string = $p), ", ") & ")"
+    result = "$1: ($2)" % @[$patt.branchKind, join(map(patt.children, proc(p: TPattern): string = $p), ", ")]
   of LeafPattern:
     case patt.leafKind
     of Option:
-      result = "Option(" & patt.short & ", " & patt.long & ", " & $patt.argcount & ", " & patt.value & ")"
+      result = "Option($1, $2, $3, $4)" % @[patt.short, patt.long, $patt.argcount, patt.value]
     else:
-      result = $patt.leafKind & "(" & patt.name & ", " & patt.value & ")"
+      result = "$1($2, $3)" % @[$patt.leafKind, patt.name, patt.value]
 
 proc flat(patt: TPattern, types: openarray[string]): seq[TPattern] =
   case patt.kind
@@ -313,7 +313,7 @@ proc parseOption(optdesc: string): TPattern =
       if matched[0] =~ re(r"\[default: (.*)\]", {reIgnoreCase}):
         value = matches[0]
   
-  result = TPattern(kind: LeafPattern, leafKind: Option, short: short, 
+  result = TPattern(kind: LeafPattern, leafKind: Option, short: short,
                     long: long, argcount: argcount, value: value)
 
 # END TOption implementation
@@ -331,7 +331,6 @@ proc move(tokens: var TTokens): string =
     system.delete(tokens, 0)
   else:
     result = ""
-  echo(result)
 
 # END TTokens implementation
 
@@ -367,8 +366,7 @@ proc parseLong(tokens: var TTokens, options: var seq[TPattern]): seq[TPattern] =
   # TODO: support DocoptExit error here
   if len(similar) > 1: # might be simply specified ambiguously 2+ times?
     var longs = map(similar) do (opt: TPattern) -> string: opt.long
-    raise newException(EDocoptLanguageError, long & " is not a unique prefix: " &
-                                             join(longs, ", ") & "?")
+    raise newException(EDocoptLanguageError, "$1 is not a unique prefix: $2?" % @[long, join(longs, ", ")])
   elif len(similar) < 1:
     var argcount = 0
     if eq == "=":
@@ -381,11 +379,11 @@ proc parseLong(tokens: var TTokens, options: var seq[TPattern]): seq[TPattern] =
                   argcount: similar[0].argcount, value: similar[0].value)
     if opt.argcount == 0:
       if value != "":
-        raise newException(EDocoptLanguageError, opt.long & " must not have an argument")
+        raise newException(EDocoptLanguageError, "$1 must not have an argument" % opt.long)
     else:
       if value == "":
         if current(tokens) in @["", "--"]:
-          raise newException(EDocoptLanguageError, opt.long & " requires argument")
+          raise newException(EDocoptLanguageError, "$1 requires argument" % opt.long)
         value = move(tokens)
     # TODO: support DocoptExit error here
 
@@ -406,8 +404,7 @@ proc parseShorts(tokens: var TTokens, options: var seq[TPattern]): seq[TPattern]
       similar = filter(options) do (opt: TPattern) -> bool: opt.short == short
     left = left[1..len(left)-1]
     if len(similar) > 1:
-      raise newException(EDocoptLanguageError, short & " is specified ambiguously " &
-                                               $len(similar) & " times")
+      raise newException(EDocoptLanguageError, "$1 is specified ambiguously $2 times" % @[short, $len(similar)])
     elif len(similar) < 1:
       opt = TPattern(kind: LeafPattern, leafKind: Option, short: short, long: "", argcount: 0, value: "")
       options = options & opt
@@ -420,7 +417,7 @@ proc parseShorts(tokens: var TTokens, options: var seq[TPattern]): seq[TPattern]
       if opt.argcount != 0:
         if left == "":
           if current(tokens) in @["", "--"]:
-            raise newException(EDocoptLanguageError, short & " requires argument")
+            raise newException(EDocoptLanguageError, "$1 requires argument" % short)
           value = move(tokens)
         else:
           value = left
@@ -447,7 +444,7 @@ proc parseAtom(tokens: var TTokens, options: var seq[TPattern]): seq[TPattern] =
       result = @[TPattern(kind: BranchPattern, branchKind: Optional, children: parseExpr(tokens, options))]
       matching = "]"
     if move(tokens) != matching:
-      raise newException(EDocoptLanguageError, "unmatched '" & token & "'")
+      raise newException(EDocoptLanguageError, "unmatched '$1'" % token)
   elif token == "options":
     discard move(tokens)
     result = @[TPattern(kind: BranchPattern, branchKind: OptionsShortcut)]
@@ -501,7 +498,7 @@ proc parsePattern(source: string, options: var seq[TPattern]): TPattern =
 
   let res = parseExpr(tokens, options)
   if current(tokens) != "":
-    raise newException(EDocoptLanguageError, "unexpected ending: " & join(tokens, " "))
+    raise newException(EDocoptLanguageError, "unexpected ending: $1" % join(tokens, " "))
   result = TPattern(kind: BranchPattern, branchKind: Required, children: res)
 
 proc parseArgv(tokens: var seq[string], options: var seq[TPattern], optionsFirst=false): seq[TPattern] =
@@ -577,9 +574,9 @@ proc docopt*(doc: string, argv: seq[string]=nil, help=true, version="", optionsF
   var options = parseDefaults(doc)
   let pattern = parsePattern(formalUsage(usageSections[0]), options)
   let argv = parseArgv(args, options, optionsFirst)
-  # TODO: turn this into a set of TOptions
-  let patternOptions = removeDupes(pattern.flat(@["TOption"]))
-  var optionShortcuts = pattern.flat(@["TOptionsShortcut"])
+  # TODO: turn this into a set of Options
+  let patternOptions = removeDupes(pattern.flat(@["Option"]))
+  var optionShortcuts = pattern.flat(@["OptionsShortcut"])
   # mutate optionShortcuts' children
   #map(optionShortcuts) do (ops: TPattern) -> TPattern:
   #  TOptionsShortcut(ops).children = 
