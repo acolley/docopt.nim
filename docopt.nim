@@ -446,7 +446,8 @@ proc parseSeq(tokens: var TTokens, options: var seq[TPattern]): seq[TPattern] =
   while current(tokens) notin @["", "]", ")", "|"]:
     var atom = parseAtom(tokens, options)
     if current(tokens) == "...":
-      atom = @[TPattern(kind: BranchPattern, branchKind: OneOrMore, children: atom)]
+      var children = atom
+      atom = @[TPattern(kind: BranchPattern, branchKind: OneOrMore, children: children)]
       discard move(tokens)
     result = result & atom
 
@@ -469,7 +470,8 @@ proc parseExpr(tokens: var TTokens, options: var seq[TPattern]): seq[TPattern] =
     else:
       result = result & sequence
   if len(result) > 1:
-    result = @[TPattern(kind: BranchPattern, branchKind: Either, children: result)]
+    var res = result
+    result = @[TPattern(kind: BranchPattern, branchKind: Either, children: res)]
 
 proc parsePattern(source: string, options: var seq[TPattern]): TPattern =
   # parse from pattern into tokens
@@ -556,7 +558,6 @@ proc docopt*(doc: string, argv: seq[string]=nil, help=true, version="", optionsF
 
   var options = parseDefaults(doc)
   let pattern = parsePattern(formalUsage(usageSections[0]), options)
-  #echo($pattern)
   let argv = parseArgv(args, options, optionsFirst)
   # TODO: turn this into a set of Options
   let patternOptions = removeDupes(pattern.flat(@["Option"]))
