@@ -265,10 +265,6 @@ proc singleMatch(patt: TPattern, left: seq[TPattern]):
 
 # END TPattern implementation
 
-# END TLeafPattern implementation
-
-# TArgument implementation
-
 proc parseArgument(source: string): TPattern =
   var name = findAll(source, re(r"<\S*?>", {}))[0]
   var m = findAll(source, re(r"\[default: (.*)\]", {reIgnoreCase}))
@@ -277,17 +273,6 @@ proc parseArgument(source: string): TPattern =
   else:
     result = TPattern(kind: LeafPattern, leafKind: Argument, name: name, value: "")
 
-# END TArgument implementation
-
-# TCommand implementation
-
-# TODO: a command is a flag so the value
-# should be a bool, find a way to represent
-# this in this statically typed language
-
-# END TCommand
-
-# TOption implementation
 proc parseOption(optdesc: string): TPattern =
   var
     short = ""
@@ -315,8 +300,6 @@ proc parseOption(optdesc: string): TPattern =
   
   result = TPattern(kind: LeafPattern, leafKind: Option, short: short,
                     long: long, argcount: argcount, value: value)
-
-# END TOption implementation
 
 # TTokens implementation
 proc current(tokens: TTokens): string =
