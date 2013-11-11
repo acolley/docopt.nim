@@ -224,9 +224,9 @@ proc `$`(patt: TPattern): string =
   of LeafPattern:
     case patt.leafKind
     of Option:
-      result = "Option($1, $2, $3, $4)" % @[patt.short, patt.long, $patt.argcount, patt.value]
+      result = "Option(\"$1\", \"$2\", $3, \"$4\")" % @[patt.short, patt.long, $patt.argcount, patt.value]
     else:
-      result = "$1($2, $3)" % @[$patt.leafKind, patt.name, patt.value]
+      result = "$1(\"$2\", \"$3\")" % @[$patt.leafKind, patt.name, patt.value]
 
 proc flat(patt: TPattern, types: openarray[string]): seq[TPattern] =
   case patt.kind
@@ -430,7 +430,7 @@ proc parseAtom(tokens: var TTokens, options: var seq[TPattern]): seq[TPattern] =
       raise newException(EDocoptLanguageError, "unmatched '$1'" % token)
   elif token == "options":
     discard move(tokens)
-    result = @[TPattern(kind: BranchPattern, branchKind: OptionsShortcut)]
+    result = @[TPattern(kind: BranchPattern, branchKind: OptionsShortcut, children: @[])]
   elif token.startswith("--") and token != "--":
     result = parseLong(tokens, options)
   elif token.startswith("-") and token notin @["-", "--"]:
@@ -469,7 +469,7 @@ proc parseExpr(tokens: var TTokens, options: var seq[TPattern]): seq[TPattern] =
     else:
       result = result & sequence
   if len(result) > 1:
-    result = @[TPattern(kind: BranchPattern, branchKind: Either, children: sequence)]
+    result = @[TPattern(kind: BranchPattern, branchKind: Either, children: result)]
 
 proc parsePattern(source: string, options: var seq[TPattern]): TPattern =
   # parse from pattern into tokens
@@ -556,6 +556,7 @@ proc docopt*(doc: string, argv: seq[string]=nil, help=true, version="", optionsF
 
   var options = parseDefaults(doc)
   let pattern = parsePattern(formalUsage(usageSections[0]), options)
+  #echo($pattern)
   let argv = parseArgv(args, options, optionsFirst)
   # TODO: turn this into a set of Options
   let patternOptions = removeDupes(pattern.flat(@["Option"]))
